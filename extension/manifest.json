@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Spotify Focused",
+  "version": "0.1.0",
+  "description": "Your playlists, your search, your music. A quieter Spotify web player.",
+  "permissions": ["storage"],
+  "background": { "service_worker": "background.js" },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Spotify Focused",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [{
+    "matches": ["https://open.spotify.com/*"],
+    "js": ["core.js", "content.js"],
+    "css": ["content.css"],
+    "run_at": "document_idle"
+  }]
+}

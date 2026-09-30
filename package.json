@@ -1,0 +1,15 @@
+{
+  "name": "spotify-focused",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A quieter Spotify web player, with a Home you choose.",
+  "scripts": {
+    "check": "node --check extension/core.js && node --check extension/store.js && node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js && node scripts/check.mjs",
+    "test": "node --test tests/*.test.cjs",
+    "icons": "node scripts/icons.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

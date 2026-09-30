@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spotify Focused</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header><img src="icons/icon-48.png" width="32" height="32" alt=""><h1>Spotify <span>Focused</span></h1></header>
+  <label class="toggle"><span>Focused mode</span><input id="enabled" type="checkbox" role="switch" disabled></label>
+  <p id="summary">Loading your Home…</p>
+  <a href="https://open.spotify.com/home" target="_blank" rel="noopener">Open Spotify</a>
+  <p class="hint">Choose <strong>Show on Home</strong> on any playlist. Turn off Focused mode to return to regular Spotify.</p>
+  <p id="status" role="status"></p>
+  <script src="core.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

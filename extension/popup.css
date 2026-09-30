@@ -1,0 +1,18 @@
+:root { color-scheme: dark; font: 14px/1.5 system-ui, sans-serif; background: #111312; color: #f3f5f3; }
+body { width: 300px; margin: 0; padding: 24px; box-sizing: border-box; }
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+h1 { font-size: 16px; margin: 0; font-weight: 600; }
+h1 span { font-weight: 400; color: #a0aba3; }
+.toggle { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+input { appearance: none; width: 38px; height: 22px; border-radius: 20px; background: #47514a; position: relative; cursor: pointer; }
+input::before { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff; top: 3px; left: 3px; }
+input:checked { background: #7aaf87; }
+input:checked::before { left: 19px; }
+input:disabled { opacity: .5; }
+:is(a, input):focus-visible { outline: 2px solid #c2efce; outline-offset: 4px; }
+p { color: #a0aba3; font-size: 12px; }
+a { display: block; background: #c2efce; color: #14291b; border-radius: 24px; text-align: center; padding: 10px; margin: 20px 0; text-decoration: none; font-weight: 600; }
+a:hover { background: #d8f7e0; }
+.hint { line-height: 1.7; margin-bottom: 0; }
+#status:empty { display: none; }
+#status { color: #f1c4a7; }
