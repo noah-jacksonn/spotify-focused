@@ -3,6 +3,10 @@
   if (globalThis.__spotifyFocused) return;
   const C = globalThis.SpotifyFocusedCore;
   const html = document.documentElement;
+  // Apply narrow cleanup before Spotify paints; reveal its shell once mounted.
+  html.setAttribute('data-sf-clean', '');
+  html.setAttribute('data-sf-loading', '');
+  const bootTimer = setTimeout(finishLoading, 4000);
   const own = '[data-sf-ui]';
   let state = C.settings();
   let persisted = C.settings();
@@ -30,7 +34,14 @@
   let pinControl = null;
   let backdrop = null;
   let status = null;
-  let filterAttempt = 0;
+  let filterDefaultPending = false;
+  let applyingFilter = false;
+  const filterAttempts = new Set();
+
+  function finishLoading() {
+    clearTimeout(bootTimer);
+    html.removeAttribute('data-sf-loading');
+  }
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -56,7 +67,7 @@
     if (!status?.isConnected) {
       status = ui('div', 'sf-status');
       status.setAttribute('role', 'status');
-      document.body.append(status);
+      (document.body || html).append(status);
     }
     status.textContent = message;
     status.classList.toggle('sf-error', Boolean(message));
@@ -256,7 +267,8 @@
     if (sidebar) sidebar.inert = open;
     render();
     if (open) {
-      filterAttempt = 0;
+      filterDefaultPending = true;
+      filterAttempts.clear();
       filterPlaylists();
       libraryClose?.focus();
     } else if (restoreFocus) {
@@ -266,13 +278,37 @@
   }
 
   function filterPlaylists() {
-    if (!drawerOpen || !library || filterAttempt >= 2) return;
-    const chip = library.querySelector('[data-encore-id="chip"][aria-label="Playlists"]');
-    if (!chip || chip.getAttribute('aria-checked') === 'true') return;
-    const option = chip.closest('[role="option"]');
-    if (option?.getAttribute('aria-selected') === 'true') return;
-    filterAttempt += 1;
-    (option || chip).click();
+    if (!drawerOpen || !library || !filterDefaultPending) return;
+    // By you arrives asynchronously after Spotify applies the Playlists filter.
+    for (const label of ['Playlists', 'By you']) {
+      const chip = library.querySelector(`[data-encore-id="chip"][aria-label="${label}"]`);
+      if (!chip) return;
+      const option = chip.closest('[role="option"]');
+      if (chip.getAttribute('aria-checked') === 'true' || option?.getAttribute('aria-selected') === 'true') continue;
+      if (filterAttempts.has(label)) return;
+      filterAttempts.add(label);
+      applyingFilter = true;
+      try { (option || chip).click(); } finally { applyingFilter = false; }
+      if (label === 'By you') filterDefaultPending = false;
+      return;
+    }
+    filterDefaultPending = false;
+  }
+
+  function onFilterClick(event) {
+    if (!applyingFilter && drawerOpen && library?.contains(event.target) && event.target.closest('[role="option"]')) {
+      filterDefaultPending = false;
+      const playlists = event.target.closest('[role="option"]').querySelector('[aria-label="Playlists"]');
+      const byYou = library.querySelector('[data-encore-id="chip"][aria-label="By you"][aria-checked="true"]');
+      // Spotify normally clears both levels here. Keep Playlists selected when
+      // going from your playlists back to everyone's saved playlists.
+      if (playlists && byYou) {
+        event.preventDefault();
+        event.stopPropagation();
+        applyingFilter = true;
+        try { (byYou.closest('[role="option"]') || byYou).click(); } finally { applyingFilter = false; }
+      }
+    }
   }
 
   function mount() {
@@ -374,7 +410,7 @@
       const label = (selected ? 'Remove from Home: ' : 'Show on Home: ') + playlist.name;
       if (pin.getAttribute('aria-label') !== label) {
         pin.setAttribute('aria-label', label);
-        pin.title = selected ? 'Shown on Home' : 'Show on Home';
+        pin.setAttribute('data-sf-tooltip', 'Show on Home');
         pin.setAttribute('aria-pressed', String(selected));
         pin.textContent = selected ? '✓' : '+';
       }
@@ -405,6 +441,7 @@
     if (!pinControl?.isConnected || pinControl.parentElement !== actions) {
       pinControl?.remove();
       pinControl = ui('label', 'sf-show-home');
+      pinControl.title = 'Show on Home';
       const checkbox = el('input');
       checkbox.type = 'checkbox';
       checkbox.addEventListener('change', () => toggleHome(readCurrentPlaylist()));
@@ -435,34 +472,68 @@
     for (const heading of document.querySelectorAll('main h2, main h3')) {
       if (!/^(Recommended|Recommended songs|Fans also like|More like .+)$/i.test(heading.textContent.trim())) continue;
       const section = heading.closest('section');
-      if (section && !section.matches('[data-testid$="-page"]')) section.setAttribute('data-sf-recommendation', '');
+      if (section && !section.matches('[data-testid$="-page"]')) {
+        section.toggleAttribute('data-sf-recommendation', C.route(location.pathname) !== 'playlist');
+      }
     }
+  }
+
+  function hideAppPromotions() {
+    const appPitch = /\b(?:download|install|open|listen|play offline)\b.{0,100}\b(?:(?:Mac|Windows|desktop|Spotify) app|free app|app for (?:Mac|Windows))\b|\bdownload (?:Spotify )?for (?:Mac|Windows)\b/i;
+    const appControl = /^(?:Download|Install (?:App|Spotify)|Download (?:Spotify|(?:the )?(?:free |desktop |Mac |Windows )?app)|Download (?:Spotify )?for (?:Mac|Windows)(?:OS)?|Open (?:in )?(?:the )?(?:desktop|Mac|Windows) app)$/i;
+    for (const node of document.querySelectorAll('[role="dialog"], [role="tooltip"], [data-tippy-root], [role="menuitem"], button')) {
+      // The library is our dialog, and its playlist names are user content.
+      if (node.closest(own + ', [data-sf-library]')) {
+        node.removeAttribute('data-sf-app-promo');
+        continue;
+      }
+      const overlay = node.matches('[role="dialog"], [role="tooltip"], [data-tippy-root]');
+      const label = node.getAttribute('aria-label') || '';
+      const text = (overlay ? label + ' ' + node.textContent : label || node.textContent || '').replace(/\s+/g, ' ').trim();
+      node.toggleAttribute('data-sf-app-promo', overlay ? appPitch.test(text) : appControl.test(text));
+    }
+  }
+
+  function updateRightSidebar() {
+    const right = document.querySelector('[data-sf-right]');
+    const queue = right?.querySelector('aside[aria-label="Queue"]') &&
+      document.querySelector('[data-testid="control-button-queue"][aria-pressed="true"]');
+    const connect = right?.querySelector('aside[aria-label="Connect to a device"]') &&
+      document.querySelector('button[aria-label="Connect to a device"][aria-pressed="true"]');
+    // Only display panels the user opened. Unknown loading/promotion panels
+    // must never count as useful content merely because they contain text.
+    html.toggleAttribute('data-sf-right-open', Boolean(queue || connect));
   }
 
   function reconcile() {
     if (disposed || !ready || !state.enabled) return;
     try {
-      if (!mount()) { disable(); return; }
+      html.setAttribute('data-sf-clean', '');
+      hideAppPromotions();
+      // Spotify builds/replaces its layout in stages. Keep promotion cleanup
+      // active even when the full Focused shell cannot mount yet.
+      if (!mount()) { disable(true); return; }
       html.setAttribute('data-sf-enabled', '');
       html.setAttribute('data-sf-page', C.route(location.pathname));
-      const right = document.querySelector('[data-sf-right]');
-      // Keep explicitly requested Queue/Connect panels; the automatic Now Playing
-      // recommendation panel is hidden, while cover art remains in the player.
-      const usefulRight = right && !right.querySelector('[data-testid="NPV_Panel_OpenDiv"]') && right.textContent.trim();
-      html.toggleAttribute('data-sf-right-open', Boolean(usefulRight));
+      updateRightSidebar();
       collectLibrary();
       updatePlaylistControl();
       updateSearch();
       hideRecommendations();
       filterPlaylists();
       render();
+      finishLoading();
     } catch (error) {
       disable();
       console.warn('Spotify Focused restored the normal layout:', error.message);
     }
   }
 
-  function disable() {
+  function disable(keepCleanup = false) {
+    if (!keepCleanup) {
+      html.removeAttribute('data-sf-clean');
+      finishLoading();
+    }
     clearTimeout(saveTimer);
     pendingMetadata.clear();
     html.removeAttribute('data-sf-enabled');
@@ -491,10 +562,14 @@
   const observer = new MutationObserver(records => {
     if (records.some(record => {
       const target = record.target.nodeType === Node.ELEMENT_NODE ? record.target : record.target.parentElement;
-      if (target?.closest(own + ', [data-testid="now-playing-bar"]')) return false;
+      if (target?.closest(own)) return false;
+      if (target?.closest('[data-testid="now-playing-bar"]') && record.attributeName !== 'aria-pressed') return false;
       if (record.type === 'childList' && [...record.addedNodes, ...record.removedNodes].every(node => node.nodeType === Node.ELEMENT_NODE && node.matches(own))) return false;
       return true;
-    })) schedule();
+    })) {
+      if (ready && state.enabled) { hideAppPromotions(); updateRightSidebar(); }
+      schedule();
+    }
   });
 
   function onInput(event) {
@@ -545,12 +620,13 @@
       const result = await chrome.storage.local.get(C.STORAGE_KEY);
       adopt(result[C.STORAGE_KEY]);
       ready = true;
-      observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true,
-        attributeFilter: ['aria-controls', 'aria-checked', 'aria-selected', 'src', 'id'] });
+      observer.observe(html, { childList: true, subtree: true, characterData: true, attributes: true,
+        attributeFilter: ['aria-controls', 'aria-checked', 'aria-selected', 'aria-pressed', 'aria-label', 'data-testid', 'role', 'href', 'src', 'id'] });
       document.addEventListener('input', onInput, true);
+      document.addEventListener('click', onFilterClick, true);
       document.addEventListener('keydown', onKey);
       chrome.storage.onChanged.addListener(onStorage);
-      reconcile();
+      if (state.enabled) reconcile(); else disable();
     } catch {
       disable();
       announce('Spotify Focused could not load. Reload Spotify to reconnect the extension.');
@@ -566,6 +642,7 @@
       clearTimeout(scheduled);
       clearTimeout(saveTimer);
       document.removeEventListener('input', onInput, true);
+      document.removeEventListener('click', onFilterClick, true);
       document.removeEventListener('keydown', onKey);
       chrome.storage.onChanged.removeListener(onStorage);
       disable();

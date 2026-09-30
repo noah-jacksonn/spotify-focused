@@ -8,7 +8,7 @@ const a = 'a'.repeat(22), b = 'b'.repeat(22);
 const row = (id, name) => `<div role="row"><div role="gridcell"><div role="button" aria-labelledby="listrow-title-spotify:playlist:${id}"></div><p id="listrow-title-spotify:playlist:${id}">${name}</p><p data-encore-id="listRowSubtitle">Playlist • Listener</p><img src="https://i.scdn.co/image/${id}"></div></div>`;
 const playlist = (name = 'End of 2026') => `<section data-testid="playlist-page"><div data-testid="entity-header"><span data-testid="entityTitle"><h1>${name}</h1></span><a data-testid="creator-link">Listener</a><div data-testid="playlist-image"><img src="https://i.scdn.co/image/${name.replaceAll(' ', '')}"></div></div><div data-testid="action-bar-row"><button id="native-play">Play</button></div><div data-testid="playlist-tracklist">Native songs</div></section>`;
 
-async function fixture(t, { saved, path = '/home', failSet = false, storageDelay = 0, shared } = {}) {
+async function fixture(t, { saved, path = '/home', failSet = false, storageDelay = 0, shared, beforeStart } = {}) {
   const dom = new JSDOM(`<!doctype html><html><body><div id="layout">
     <div data-testid="global-nav-bar" style="grid-area:global-nav"><div><input data-testid="search-input" type="search" aria-controls="search-suggestions"></div><div><button data-testid="user-widget-link">Account</button></div></div>
     <div style="grid-area:left-sidebar"><nav aria-label="Main"><div class="YourLibraryX"><div role="option"><div data-encore-id="chip" aria-label="Playlists" aria-checked="false"></div></div><div role="grid">${row(a, 'End of 2026')}${row(b, 'Other playlist')}</div></div></nav></div>
@@ -45,6 +45,7 @@ async function fixture(t, { saved, path = '/home', failSet = false, storageDelay
   } };
   const chip = window.document.querySelector('[aria-label="Playlists"]');
   chip.parentElement.addEventListener('click', () => chip.setAttribute('aria-checked', 'true'));
+  beforeStart?.(window);
   for (const file of ['core.js', 'content.js']) window.eval(readFileSync(`extension/${file}`, 'utf8'));
   await new Promise(resolve => setTimeout(resolve, 10));
   t.after(() => { window.__spotifyFocused.dispose(); window.close(); });
@@ -238,4 +239,136 @@ test('two tabs with different artwork stop writing when Spotify metadata is unch
   assert.equal(shared.data[C.STORAGE_KEY].home[0].image, 'https://i.scdn.co/image/Endof2026');
   await new Promise(resolve => setTimeout(resolve, 950));
   assert.equal(shared.writes.length, settledWrites);
+});
+
+test('drawer defaults to By you after filters load, then respects switching back to Playlists', async t => {
+  const f = await fixture(t);
+  const playlists = f.doc.querySelector('[aria-label="Playlists"]');
+  f.doc.querySelector('.sf-all').click();
+  const option = f.doc.createElement('div');
+  option.setAttribute('role', 'option');
+  option.innerHTML = '<div data-encore-id="chip" aria-label="By you" aria-checked="false"></div>';
+  const byYou = option.firstElementChild;
+  option.addEventListener('click', () => byYou.setAttribute('aria-checked', String(byYou.getAttribute('aria-checked') !== 'true')));
+  playlists.parentElement.after(option);
+  f.window.__spotifyFocused.refresh();
+  assert.equal(byYou.getAttribute('aria-checked'), 'true');
+  playlists.parentElement.addEventListener('click', () => playlists.setAttribute('aria-checked', 'false'));
+  playlists.click();
+  f.window.__spotifyFocused.refresh();
+  assert.equal(byYou.getAttribute('aria-checked'), 'false');
+  assert.equal(playlists.getAttribute('aria-checked'), 'true');
+  f.doc.querySelector('.sf-close').click();
+  f.doc.querySelector('.sf-all').click();
+  assert.equal(byYou.getAttribute('aria-checked'), 'true');
+});
+
+test('playlist discovery sections remain available', async t => {
+  const f = await fixture(t, { path: '/playlist/' + a });
+  const recommendations = f.doc.createElement('section');
+  recommendations.innerHTML = '<h2>Recommended songs</h2><div data-testid="recommended-track">Discover a song</div>';
+  f.doc.querySelector('[data-testid="playlist-page"]').append(recommendations);
+  f.window.__spotifyFocused.refresh();
+  assert.equal(recommendations.hasAttribute('data-sf-recommendation'), false);
+  assert.equal(f.doc.querySelector('.sf-show-home').title, 'Show on Home');
+  assert.equal(f.doc.querySelector('.sf-library-pin').getAttribute('data-sf-tooltip'), 'Show on Home');
+});
+
+test('document-start cleanup waits for the body and staged Spotify layout', async t => {
+  let body;
+  const f = await fixture(t, { beforeStart(window) { body = window.document.body; body.remove(); } });
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-clean'), true);
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-loading'), true);
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-enabled'), false);
+  f.doc.documentElement.append(body);
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-enabled'), true);
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-loading'), false);
+  assert.equal(f.doc.querySelectorAll('.sf-home').length, 1);
+});
+
+test('late app-download popovers and menu items are hidden while music and editing remain available', async t => {
+  const f = await fixture(t);
+  const portal = f.doc.createElement('div');
+  portal.innerHTML = '<div role="tooltip">Download and play offline with the Mac app<button>Download the free app</button></div><div role="menuitem">Download for Mac</div><div role="dialog">Edit playlist<button>Save</button></div><button>Play Download by Artist</button>';
+  f.doc.body.append(portal);
+  await f.flush();
+  assert.equal(portal.querySelector('[role="tooltip"]').hasAttribute('data-sf-app-promo'), true);
+  assert.equal(portal.querySelector('[role="menuitem"]').hasAttribute('data-sf-app-promo'), true);
+  assert.equal(portal.querySelector('[role="dialog"]').hasAttribute('data-sf-app-promo'), false);
+  assert.equal(portal.lastElementChild.hasAttribute('data-sf-app-promo'), false);
+  const item = portal.querySelector('[role="menuitem"]');
+  item.textContent = 'Add to playlist';
+  await f.flush();
+  assert.equal(item.hasAttribute('data-sf-app-promo'), false);
+  await f.change({ ...f.saved, enabled: false });
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-clean'), false);
+});
+
+test('cleanup stays active during a temporary Spotify layout replacement', async t => {
+  const f = await fixture(t);
+  const libraryContent = f.doc.querySelector('.YourLibraryX');
+  const parent = libraryContent.parentElement;
+  libraryContent.remove();
+  f.window.__spotifyFocused.refresh();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-enabled'), false);
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-clean'), true);
+  parent.append(libraryContent);
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-enabled'), true);
+});
+
+test('a saved disabled preference releases startup concealment', async t => {
+  const f = await fixture(t, { saved: { enabled: false } });
+  for (const attribute of ['data-sf-clean', 'data-sf-loading', 'data-sf-enabled']) {
+    assert.equal(f.doc.documentElement.hasAttribute(attribute), false);
+  }
+});
+
+test('startup concealment expires if Spotify never renders a supported layout', async t => {
+  const f = await fixture(t, { beforeStart(window) { window.document.body.innerHTML = '<div data-testid="root">Sign in to Spotify</div>'; } });
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-loading'), true);
+  await new Promise(resolve => setTimeout(resolve, 4050));
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-loading'), false);
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-enabled'), false);
+  assert.equal(f.doc.querySelector('[data-testid="root"]').textContent, 'Sign in to Spotify');
+});
+
+test('sidebar allows selected Queue and Connect panels, never app-download or loading panels', async t => {
+  const f = await fixture(t);
+  const right = f.doc.querySelector('[data-sf-right]');
+  const player = f.doc.querySelector('[data-testid="now-playing-bar"]');
+  player.insertAdjacentHTML('beforeend', '<button data-testid="control-button-queue" aria-pressed="false">Queue</button><button aria-label="Connect to a device" aria-pressed="false">Connect</button>');
+  const queue = player.querySelector('[data-testid="control-button-queue"]');
+  const connect = player.querySelector('[aria-label="Connect to a device"]');
+  right.innerHTML = '<div>Download Spotify for Mac</div>';
+  f.window.__spotifyFocused.refresh();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-right-open'), false);
+  queue.setAttribute('aria-pressed', 'true');
+  await f.flush();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-right-open'), false);
+  right.innerHTML = '<aside aria-label="Queue">Queued songs</aside>';
+  await f.flush();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-right-open'), true);
+  right.innerHTML = '<div>Download Spotify for Mac</div>';
+  await f.flush();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-right-open'), false);
+  queue.setAttribute('aria-pressed', 'false');
+  connect.setAttribute('aria-pressed', 'true');
+  right.innerHTML = '<aside aria-label="Connect to a device">Devices</aside>';
+  await f.flush();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-right-open'), true);
+  connect.setAttribute('aria-pressed', 'false');
+  await f.flush();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-right-open'), false);
+});
+
+test('playlist names cannot classify the library drawer as an app promotion', async t => {
+  const f = await fixture(t);
+  f.doc.querySelector('[id^="listrow-title-"]').textContent = 'Music Download for Mac today';
+  f.doc.querySelector('.sf-all').click();
+  await f.flush();
+  assert.equal(f.doc.querySelector('[data-sf-library]').hasAttribute('data-sf-app-promo'), false);
+  assert.equal(f.doc.querySelector('[data-sf-library]').getAttribute('role'), 'dialog');
+  assert.ok(f.doc.querySelector('.sf-close'));
 });

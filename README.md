@@ -14,18 +14,20 @@ No build, Spotify developer account, API key, or extra sign-in is needed. When c
 ## Use
 
 - **Home** shows only the playlists you've chosen. On first use, “End of 2026” is selected if Spotify has it loaded in your library. Otherwise choose a playlist yourself.
-- **All playlists** opens the real Spotify library in a drawer. It selects the Playlists filter and keeps Spotify's folders, scrolling, search, and sort menu. Use the **+** beside a playlist to show it on Home; **✓** removes it from Home. The title covers all saved playlists, including playlists by other people.
+- **All playlists** opens the real Spotify library in a drawer. It defaults to **Playlists → By you** each time it opens; click **Playlists** to return to all saved playlists. It keeps Spotify's folders, scrolling, search, and sort menu. Use the **+** beside a playlist to show it on Home; **✓** removes it from Home. The title covers all saved playlists, including playlists by other people.
 - Open any playlist and use **Show on Home** beside its native controls. Your selection is local to this Chrome profile; it does not change Spotify's library, favorites, playlist contents, or public profile.
 - Home's **···** menu also lets you remove a playlist from Home.
 - Search works normally once you type. The empty search screen and dropdown hide recent searches and browse recommendations. Search history is hidden, not deleted from Spotify.
 - **/** focuses search; **Escape** closes the library or an open Home menu.
 - The toolbar popup's **Focused mode** switch restores regular Spotify immediately. Turning it back on keeps your selections.
 
-Playlist artwork, native song actions, sorting, editing, playback, queue, volume, shuffle, and repeat remain Spotify controls. Install/download prompts, the recommendation Home feed, playlist recommendations, social activity buttons, and the automatic Now Playing recommendations panel are hidden. Podcasts remain reachable through an intentional search.
+Playlist artwork, native song actions, sorting, editing, playback, queue, volume, shuffle, and repeat remain Spotify controls. Install/download prompts, the recommendation Home feed, social activity buttons, and the automatic Now Playing recommendations panel are hidden. Playlist recommendations and Find more remain available for discovering music. Podcasts remain reachable through an intentional search.
 
 ## Implementation
 
 Manifest V3, plain JavaScript and CSS, no runtime libraries or remote code. Content scripts run only on `https://open.spotify.com/*`. The only extension permission is `storage`.
+
+Cleanup starts at document start so app-install prompts are hidden during refresh, including late popovers and download menu items. The native app shell stays concealed while the Focused layout mounts, with a four-second fallback that reveals Spotify if its layout never becomes available. The right sidebar only opens for the selected Queue or Connect panel, so loading and app-download panels cannot claim that space. Turning Focused mode off restores the normal interface.
 
 The extension layers its own Home and navigation around Spotify's existing UI. It never moves or replaces the native player or song rows. Playlist metadata comes from rendered library rows and the currently open playlist; only the selected Home playlists and settings are saved in `chrome.storage.local`. A small service worker serializes changes from tabs and the popup, and the UI preserves pending choices across asynchronous storage updates. It makes no API requests, reads no authentication tokens, and has no analytics. Artwork is loaded from Spotify's image hosts.
 

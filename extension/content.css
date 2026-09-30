@@ -1,5 +1,23 @@
-/* All overrides are reversible: removing data-sf-enabled restores Spotify. */
+/* Early cleanup is independent of Spotify's asynchronously mounted layout. */
+html[data-sf-loading] { background: #111312 !important; }
+html[data-sf-loading] [data-testid="root"] { visibility: hidden !important; }
+html[data-sf-clean] [data-sf-app-promo],
+html[data-sf-clean] [data-testid="download-button"],
+html[data-sf-clean] [data-testid="install-app-button"],
+html[data-sf-clean] button[aria-label="Download"],
+html[data-sf-clean] a[href="/download"],
+html[data-sf-clean] a[href^="/download/"],
+html[data-sf-clean] a[href^="/download?"],
+html[data-sf-clean] a[href^="https://open.spotify.com/download"],
+html[data-sf-clean] a[href^="https://www.spotify.com/"][href*="/download"],
+html[data-sf-clean] a[href^="https://spotify.com/"][href*="/download"],
+html[data-sf-clean] [data-tippy-root]:has([data-testid="download-button"]),
+html[data-sf-clean] [data-tippy-root]:has(a[href^="https://www.spotify.com/"][href*="/download"]) { display: none !important; }
+
+/* All layout overrides are reversible by turning Focused mode off. */
 html[data-sf-enabled] {
+  /* Keep focus/scroll on playlist content from shifting the entire app shell. */
+  overflow: clip !important;
   --sf-bg: #111312;
   --sf-surface: #171a18;
   --sf-text: #f3f5f3;
@@ -39,7 +57,7 @@ html[data-sf-enabled] [data-sf-player] {
 }
 html[data-sf-enabled] [data-testid="now-playing-bar"] { background: var(--sf-surface) !important; }
 html[data-sf-enabled] [data-sf-right] { display: none !important; }
-html[data-sf-enabled][data-sf-right-open] [data-sf-right] {
+html[data-sf-enabled][data-sf-right-open] [data-sf-right]:has(aside:is([aria-label="Queue"], [aria-label="Connect to a device"])) {
   display: flex !important;
   grid-area: right-sidebar !important;
   width: 320px !important;
@@ -52,12 +70,7 @@ html[data-sf-enabled] .main-view-container__mh-footer-container,
 html[data-sf-enabled] [data-testid="footer-div"],
 html[data-sf-enabled] [data-sf-recommendation],
 html[data-sf-enabled] [data-sf-history],
-html[data-sf-enabled] [data-testid="recommended-track"],
-html[data-sf-enabled] [data-testid="download-button"],
-html[data-sf-enabled] button[aria-label="Download"],
-html[data-sf-enabled] a[href="/download"],
-html[data-sf-enabled] a[href^="https://www.spotify.com/download"],
-html[data-sf-enabled] a[href^="https://open.spotify.com/download"] { display: none !important; }
+html[data-sf-enabled]:not([data-sf-page="playlist"]) [data-testid="recommended-track"] { display: none !important; }
 
 /* Keep the native search field, account menu, and their actual event handlers. */
 html[data-sf-enabled] [data-testid="global-nav-bar"] {
@@ -66,6 +79,9 @@ html[data-sf-enabled] [data-testid="global-nav-bar"] {
   align-items: center !important;
   gap: 24px !important;
   padding: 12px 28px !important;
+  margin: 0 !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
   min-height: 0 !important;
   width: 100% !important;
   background: var(--sf-bg) !important;
@@ -200,6 +216,24 @@ html[data-sf-enabled] [data-sf-playlist-row] [role="gridcell"] { position: relat
 html[data-sf-enabled] .sf-library-pin { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border: none; border-radius: 50%; background: var(--sf-surface); color: var(--sf-muted); font-size: 22px; z-index: 2; padding: 0; }
 html[data-sf-enabled] .sf-library-pin:hover { background: var(--sf-hover); color: var(--sf-text); }
 html[data-sf-enabled] .sf-library-pin[aria-pressed="true"] { color: var(--sf-accent); font-size: 17px; }
+html[data-sf-enabled] .sf-library-pin::after {
+  content: attr(data-sf-tooltip);
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 7px 10px;
+  border: 1px solid var(--sf-line);
+  border-radius: 6px;
+  background: #292f2b;
+  color: var(--sf-text);
+  font: 500 12px/1.3 system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px #0005;
+  pointer-events: none;
+  visibility: hidden;
+}
+html[data-sf-enabled] .sf-library-pin:is(:hover, :focus-visible)::after { visibility: visible; }
 html[data-sf-enabled] .sf-backdrop { display: none; }
 html[data-sf-enabled][data-sf-library-open] .sf-backdrop { display: block; position: fixed; inset: 76px 0 90px; z-index: 100; background: #0005; border: none; cursor: default; }
 
