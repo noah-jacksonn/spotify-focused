@@ -9,10 +9,17 @@ input::before { content: ''; position: absolute; width: 16px; height: 16px; bord
 input:checked { background: #7aaf87; }
 input:checked::before { left: 19px; }
 input:disabled { opacity: .5; }
-:is(a, input):focus-visible { outline: 2px solid #c2efce; outline-offset: 4px; }
+:is(button, input):focus-visible { outline: 2px solid #c2efce; outline-offset: 4px; }
 p { color: #a0aba3; font-size: 12px; }
-a { display: block; background: #c2efce; color: #14291b; border-radius: 24px; text-align: center; padding: 10px; margin: 20px 0; text-decoration: none; font-weight: 600; }
-a:hover { background: #d8f7e0; }
-.hint { line-height: 1.7; margin-bottom: 0; }
+.library-setting { border-top: 1px solid #29322c; padding-top: 16px; margin-top: 22px; }
+#musicFolder { display: flex; align-items: center; gap: 10px; width: calc(100% + 16px); margin: -8px; padding: 8px; background: transparent; border: 0; border-radius: 10px; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+#musicFolder:hover { background: #1b241e; }
+.library-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.library-copy strong { font-weight: 550; }
+#libraryName { color: #a0aba3; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-icon { display: block; width: 18px; height: 18px; }
+#libraryChevron { color: #a0aba3; }
+#libraryChevron .sf-icon { width: 14px; height: 14px; }
+.hint { line-height: 1.5; margin: 12px 0 0; }
 #status:empty { display: none; }
 #status { color: #f1c4a7; }

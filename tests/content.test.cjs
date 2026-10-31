@@ -21,6 +21,8 @@ async function fixture(t, { saved, path = '/home', failSet = false, storageDelay
   let data = shared?.data || (saved ? { [C.STORAGE_KEY]: saved } : {});
   const writes = shared?.writes || [];
   window.structuredClone = structuredClone;
+  Object.defineProperty(window, 'crypto', {value: require('node:crypto').webcrypto});
+  window.TextEncoder = TextEncoder;
   window.chrome = {
     storage: {
       local: {
@@ -28,10 +30,10 @@ async function fixture(t, { saved, path = '/home', failSet = false, storageDelay
         async set(update) {
           if (storageDelay) await new Promise(resolve => setTimeout(resolve, storageDelay));
           if (failSet) throw Error('quota');
-          const oldValue = data[C.STORAGE_KEY];
+          const changes = Object.fromEntries(Object.entries(update).map(([key, newValue]) => [key, { oldValue: data[key], newValue }]));
           Object.assign(data, structuredClone(update));
           writes.push(structuredClone(update));
-          for (const listener of listeners) listener({ [C.STORAGE_KEY]: { oldValue, newValue: data[C.STORAGE_KEY] } }, 'local');
+          for (const listener of listeners) listener(changes, 'local');
         }
       },
       onChanged: { addListener: fn => listeners.add(fn), removeListener: fn => listeners.delete(fn) }
@@ -39,14 +41,14 @@ async function fixture(t, { saved, path = '/home', failSet = false, storageDelay
   };
   const store = shared?.store || createStore(window.chrome.storage.local);
   if (shared) shared.store = store;
-  window.chrome.runtime = { async sendMessage(message) {
+  window.chrome.runtime = { id: 'test-extension', async sendMessage(message) {
     try { return { ok: true, state: await store.update(message.operation) }; }
     catch { return { ok: false }; }
   } };
   const chip = window.document.querySelector('[aria-label="Playlists"]');
   chip.parentElement.addEventListener('click', () => chip.setAttribute('aria-checked', 'true'));
   beforeStart?.(window);
-  for (const file of ['core.js', 'content.js']) window.eval(readFileSync(`extension/${file}`, 'utf8'));
+  for (const file of ['core.js', 'control-icons.js', 'imported-artwork.js', 'imported-player-view.js', 'content.js']) window.eval(readFileSync(`extension/${file}`, 'utf8'));
   await new Promise(resolve => setTimeout(resolve, 10));
   t.after(() => { window.__spotifyFocused.dispose(); window.close(); });
   return { window, doc: window.document, writes, async flush() { await new Promise(resolve => setTimeout(resolve, 10)); }, get saved() { return data[C.STORAGE_KEY]; }, failWrites() { failSet = true; }, async change(state) { await window.chrome.storage.local.set({ [C.STORAGE_KEY]: { ...state, revision: (data[C.STORAGE_KEY]?.revision || 0) + 1 } }); } };
@@ -174,7 +176,7 @@ test('playlist names are rendered as text, never executable markup', async t => 
 test('storage errors are reported instead of silently losing Home choices', async t => {
   const f = await fixture(t, { failSet: true });
   await f.flush();
-  assert.match(f.doc.querySelector('[role="status"]').textContent, /could not be saved/);
+  assert.match(f.doc.querySelector('.sf-status').textContent, /could not be saved/);
 });
 
 test('unknown Spotify structure leaves native content visible', async t => {
@@ -213,7 +215,7 @@ test('save failures remain visible after switching off and on', async t => {
   f.failWrites();
   f.doc.querySelector('.sf-home-row input').click();
   await f.flush();
-  assert.match(f.doc.querySelector('[role="status"]').textContent, /could not be saved/);
+  assert.match(f.doc.querySelector('.sf-status').textContent, /could not be saved/);
 });
 
 test('late storage events do not erase newer pending Home selections', async t => {
@@ -371,4 +373,100 @@ test('playlist names cannot classify the library drawer as an app promotion', as
   assert.equal(f.doc.querySelector('[data-sf-library]').hasAttribute('data-sf-app-promo'), false);
   assert.equal(f.doc.querySelector('[data-sf-library]').getAttribute('role'), 'dialog');
   assert.ok(f.doc.querySelector('.sf-close'));
+});
+
+test('imported playlists appear below End of 2026 and open the extension library', async t => {
+  const f = await fixture(t);
+  const opened = [];
+  f.window.chrome.runtime.sendMessage = async msg => { opened.push(msg); return { ok: true }; };
+  await f.window.chrome.storage.local.set({ importedHome: [{ name: 'Suno', count: 2 }] });
+  const rows = [...f.doc.querySelectorAll('.sf-home-row')];
+  assert.match(rows[0].textContent, /End of 2026/);
+  assert.match(rows[1].textContent, /Suno.*2 songs/);
+  rows[1].querySelector('button').click();
+  assert.deepEqual(JSON.parse(JSON.stringify(opened.at(-1))), { type: 'imported:open', playlist: 'Suno' });
+  await f.window.chrome.storage.local.set({ importedHome: [] });
+  assert.equal(f.doc.querySelector('.sf-import-link'), null);
+});
+
+test('reloading the extension stops stale polling and restores native Spotify without errors', async t => {
+  const f = await fixture(t);
+  const errors = [];
+  f.window.addEventListener('error', event => errors.push(event.error));
+  f.window.chrome.runtime.id = undefined;
+  Object.defineProperty(f.window.chrome.runtime, 'onMessage', { get() { throw Error('Extension context invalidated.'); } });
+  f.window.chrome.storage.onChanged.removeListener = () => { throw Error('Extension context invalidated.'); };
+  await new Promise(resolve => setTimeout(resolve, 420));
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-enabled'), false);
+  assert.ok(f.doc.querySelector('[data-testid="now-playing-bar"]'));
+  assert.equal(f.doc.querySelectorAll('[data-sf-ui]').length, 0);
+  assert.equal(errors.length, 0);
+});
+
+test('storage callbacks after invalidation do not render stale imported playlists', async t => {
+  const f = await fixture(t);
+  f.window.chrome.runtime.id = undefined;
+  await f.window.chrome.storage.local.set({ importedHome: [{name:'Suno',count:2}] });
+  assert.equal(f.doc.querySelector('.sf-import-link'), null);
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-enabled'), false);
+});
+
+test('a synchronous messaging invalidation is caught even when runtime.id has not changed yet', async t => {
+  const f = await fixture(t);
+  await f.window.chrome.storage.local.set({ importedHome: [{name:'Suno',count:2}] });
+  f.window.chrome.runtime.sendMessage = () => { throw Error('Extension context invalidated.'); };
+  f.doc.querySelector('.sf-import-link').click();
+  await f.flush();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-enabled'), false);
+  assert.equal(f.doc.querySelectorAll('[data-sf-ui]').length, 0);
+});
+
+test('Space controls imported audio without triggering Spotify or intercepting typing', async t => {
+  let receive;
+  const f = await fixture(t, {beforeStart(window) {
+    window.chrome.runtime.onMessage = {addListener: fn => { receive=fn; },removeListener() {}};
+  }});
+  const commands=[];
+  f.window.chrome.runtime.sendMessage = async msg => { commands.push(msg); return {ok:true}; };
+  receive({type:'imported:display',state:{index:0,playing:true,entries:[{title:'Song',artist:'Suno',playlist:'Suno',file:'song.m4a'}]}});
+  let nativeKeys=0;
+  f.doc.addEventListener('keydown',()=>nativeKeys++);
+  const press=(target,options={})=>{const event=new f.window.KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true,cancelable:true,...options});target.dispatchEvent(event);return event;};
+  assert.equal(press(f.doc.body).defaultPrevented,true);
+  await f.flush();
+  assert.equal(commands.at(-1).cmd.action,'pause');assert.equal(nativeKeys,0);
+  press(f.doc.body,{repeat:true});
+  const count=commands.length;
+  assert.equal(press(f.doc.querySelector('input')).defaultPrevented,false);
+  await f.flush();assert.equal(commands.length,count);assert.equal(nativeKeys,1);
+});
+
+test('starting Spotify restores its player even when the imported queue is paused', async t => {
+  let receive;
+  const f=await fixture(t,{beforeStart(window){window.chrome.runtime.onMessage={addListener:fn=>{receive=fn;},removeListener(){}};}});
+  const messages=[];
+  f.window.chrome.runtime.sendMessage=async message=>{messages.push(message);return {ok:true};};
+  const local={index:0,playing:false,entries:[{title:'Song',artist:'Suno',playlist:'Suno',file:'song.m4a'}]};
+  receive({type:'imported:display',state:local});
+  assert.ok(f.doc.querySelector('.sf-local-bar'));
+  f.doc.querySelector('[data-testid="now-playing-bar"]').insertAdjacentHTML('beforeend','<button data-testid="control-button-playpause" aria-label="Play">Play</button>');
+  f.doc.querySelector('[data-testid="control-button-playpause"]').setAttribute('aria-label','Pause');
+  await f.flush();
+  assert.equal(f.doc.documentElement.hasAttribute('data-sf-local-player'),false);
+  assert.equal(f.doc.querySelector('.sf-local-bar'),null);
+  assert.ok(messages.some(message=>message.type==='imported:spotify-started'));
+  receive({type:'imported:display',state:local});
+  assert.equal(f.doc.querySelector('.sf-local-bar'),null);
+  receive({type:'imported:pauseSpotify'});
+  assert.ok(f.doc.querySelector('.sf-local-bar'));
+});
+
+test('Spotify playback ownership reaches sibling tabs and survives cached queue updates', async t => {
+  let receive;
+  const f=await fixture(t,{beforeStart(window){window.chrome.runtime.onMessage={addListener:fn=>{receive=fn;},removeListener(){}};}});
+  const state={index:0,playing:false,entries:[{title:'Song',artist:'Suno',playlist:'Suno',file:'song.m4a'}]};
+  receive({type:'imported:display',state});
+  receive({type:'imported:owner',owner:'spotify'});
+  receive({type:'imported:display',state:{...state,playbackOwner:'spotify'}});
+  assert.equal(f.doc.querySelector('.sf-local-bar'),null);
 });

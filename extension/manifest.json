@@ -1,10 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "Spotify Focused",
+  "name": "Spotify Unslopified",
   "version": "0.1.0",
   "description": "Your playlists, your search, your music. A quieter Spotify web player.",
-  "permissions": ["storage"],
-  "background": { "service_worker": "background.js" },
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "offscreen",
+    "unlimitedStorage",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://open.spotify.com/*",
+    "https://suno.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -12,13 +25,28 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Spotify Focused",
+    "default_title": "Spotify Unslopified",
     "default_popup": "popup.html"
   },
-  "content_scripts": [{
-    "matches": ["https://open.spotify.com/*"],
-    "js": ["core.js", "content.js"],
-    "css": ["content.css"],
-    "run_at": "document_start"
-  }]
+  "content_scripts": [
+    {
+      "matches": [
+        "https://open.spotify.com/*"
+      ],
+      "js": [
+        "core.js",
+        "tooltips.js",
+        "control-icons.js",
+        "imported-artwork.js",
+        "imported-player-view.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css",
+        "tooltips.css",
+        "imported-player.css"
+      ],
+      "run_at": "document_start"
+    }
+  ]
 }

@@ -3,17 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spotify Focused</title>
+  <title>Spotify Unslopified</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header><img src="icons/icon-48.png" width="32" height="32" alt=""><h1>Spotify <span>Focused</span></h1></header>
-  <label class="toggle"><span>Focused mode</span><input id="enabled" type="checkbox" role="switch" disabled></label>
-  <p id="summary">Loading your Home…</p>
-  <a href="https://open.spotify.com/home" target="_blank" rel="noopener">Open Spotify</a>
-  <p class="hint">Choose <strong>Show on Home</strong> on any playlist. Turn off Focused mode to return to regular Spotify.</p>
+  <header><img src="icons/icon-48.png" width="24" height="24" alt=""><h1>Spotify <span>Unslopified</span></h1></header>
+  <label class="toggle"><span>Unslopified mode</span><input id="enabled" type="checkbox" role="switch" disabled></label>
+  <section class="library-setting">
+    <button id="musicFolder">
+      <span id="libraryIcon" aria-hidden="true"></span>
+      <span class="library-copy"><strong>Library</strong><span id="libraryName">Choose folder</span></span>
+      <span id="libraryChevron" aria-hidden="true"></span>
+    </button>
+    <p class="hint">All imported playlists live here, one per subfolder.</p>
+  </section>
   <p id="status" role="status"></p>
   <script src="core.js"></script>
+  <script src="music-folder.js"></script>
+  <script src="control-icons.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

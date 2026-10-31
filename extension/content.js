@@ -9,6 +9,108 @@
   const bootTimer = setTimeout(finishLoading, 4000);
   const own = '[data-sf-ui]';
   let state = C.settings();
+  let importedHome = [];
+  let importedPlayer;
+  let localBar;
+  let localPlayerView;
+  let spotifyHasControl = false;
+  let spotifyPauseDeadline = 0;
+  function extensionAlive() {
+    if (disposed) return false;
+    try { if (chrome.runtime?.id) return true; } catch {}
+    dispose();
+    return false;
+  }
+  function send(message) {
+    if (!extensionAlive()) return Promise.reject(new Error('Extension context invalidated.'));
+    try {
+      return Promise.resolve(chrome.runtime.sendMessage(message)).catch(error => {
+        if (/Extension context invalidated/i.test(error.message)) dispose();
+        throw error;
+      });
+    } catch (error) {
+      if (/Extension context invalidated/i.test(error.message)) dispose();
+      return Promise.reject(error);
+    }
+  }
+  function openImports(playlist, view) {
+    send({ type: 'imported:open', playlist, ...(view ? {view} : {}) }).catch(() => { if (!disposed) announce('Could not open imported playlists.'); });
+  }
+  function localCommand(action, extra = {}) {
+    return send({ type: 'imported:command', cmd: { action, ...extra } })
+      .then(result => { if (!disposed && !result?.ok) announce(result?.error || 'Playback unavailable.'); }).catch(() => {});
+  }
+  function renderLocalBar() {
+    const entry = importedPlayer?.entries?.[importedPlayer.index];
+    const visible = !!entry && state.enabled && !spotifyHasControl && layout?.isConnected;
+    html.toggleAttribute('data-sf-local-player', !!visible);
+    if (!visible) { localPlayerView?.dispose(); localBar?.remove(); localBar = null; localPlayerView = null; return; }
+    if (!localBar?.isConnected) {
+      localBar = ui('div', 'sf-local-bar');
+      layout.append(localBar);
+      const open = view => {
+        const current = importedPlayer?.entries?.[importedPlayer.index];
+        if (current) openImports(current.playlist, view);
+      };
+      localPlayerView = ImportedPlayerView.mount(localBar, {
+        prefix:'sf-', command:localCommand, openTrack:()=>open(),
+        openLyrics:()=>open('lyrics'), openQueue:()=>open('queue')
+      });
+    }
+    localPlayerView.update(importedPlayer);
+  }
+  function importedMessage(msg) {
+    if (!extensionAlive()) return;
+    if (msg.type === 'imported:lyrics-notice') {
+      announce(msg.message);
+      clearTimeout(lyricsNoticeTimer);
+      lyricsNoticeTimer = setTimeout(() => announce(''), 6500);
+    }
+    if (msg.type === 'imported:display') {
+      if (msg.state?.playing && !importedPlayer?.playing && msg.state.playbackOwner !== 'spotify')
+        spotifyPauseDeadline = Date.now() + 1500;
+      importedPlayer = msg.state;
+      if (msg.state?.playbackOwner) spotifyHasControl = msg.state.playbackOwner === 'spotify';
+      renderLocalBar();
+    }
+    if (msg.type === 'imported:progress' && importedPlayer?.sourceID === msg.sourceID && importedPlayer.index === msg.index) {
+      importedPlayer = {...importedPlayer,position:msg.position};
+      localPlayerView?.update(importedPlayer);
+    }
+    if (msg.type === 'imported:owner') {
+      spotifyHasControl = msg.owner === 'spotify';
+      renderLocalBar();
+    }
+    if (msg.type === 'imported:pauseSpotify' && state.enabled) {
+      spotifyHasControl = false;
+      spotifyPauseDeadline = Date.now() + 1500;
+      renderLocalBar();
+      const pause = document.querySelector('[data-testid="control-button-playpause"][aria-label^="Pause"]');
+      pause?.click();
+    }
+    if (msg.type === 'imported:error') announce(msg.message);
+  }
+  let lyricsNoticeTimer;
+  function onSpotifyStart() {
+    if (!importedPlayer?.entries?.length || spotifyHasControl || Date.now() < spotifyPauseDeadline) return;
+    spotifyHasControl = true;
+    renderLocalBar();
+    send({ type: 'imported:spotify-started' }).catch(() => {});
+  }
+  function detectSpotifyPlayback() {
+    if (document.querySelector('[data-testid="control-button-playpause"][aria-label^="Pause"]')) onSpotifyStart();
+  }
+  function importedHomeRow(list) {
+    const row = el('li', 'sf-home-row');
+    const open = button('', 'sf-playlist-link sf-import-link', () => openImports(list.name));
+    const text = el('span', 'sf-playlist-copy');
+    text.append(el('strong', '', list.name), el('span', 'sf-secondary', list.count + ' songs'));
+    const art = cover(list);
+    art.querySelector('.sf-cover-fallback')?.remove();
+    ImportedArtwork.gradient(list.name).then(gradient => { art.style.backgroundImage = gradient; }).catch(() => {});
+    open.append(art, text); row.append(open);
+    return row;
+  }
   let persisted = C.settings();
   const pending = [];
   const pendingMetadata = new Map();
@@ -87,7 +189,7 @@
     const entry = { operation };
     pending.push(entry);
     deriveState();
-    chrome.runtime.sendMessage({ type: 'spotify-focused:update', operation }).then(result => {
+    send({ type: 'spotify-focused:update', operation }).then(result => {
       if (!result?.ok) throw new Error('Save failed');
       pending.splice(pending.indexOf(entry), 1);
       adopt(result.state);
@@ -204,7 +306,7 @@
   function render() {
     if (!home || !sidebar) return;
     const page = C.route(location.pathname);
-    const key = JSON.stringify([state.home, page, C.playlistId(location.pathname), drawerOpen]);
+    const key = JSON.stringify([state.home, importedHome, page, C.playlistId(location.pathname), drawerOpen]);
     if (renderKey === key) return;
     renderKey = key;
     home.replaceChildren();
@@ -222,9 +324,17 @@
       return;
     }
     home.append(el('h1', '', 'Home'));
-    if (state.home.length) {
+    if (state.home.length || importedHome.length) {
       const list = el('ul', 'sf-home-list');
-      list.append(...state.home.map(homeRow));
+      const suno = importedHome.find(p => p.name === 'Suno');
+      let placedSuno = false;
+      for (const playlist of state.home) {
+        list.append(homeRow(playlist));
+        if (suno && !placedSuno && playlist.name.toLowerCase() === 'end of 2026') {
+          list.append(importedHomeRow(suno)); placedSuno = true;
+        }
+      }
+      for (const item of importedHome) if (item !== suno || !placedSuno) list.append(importedHomeRow(item));
       home.append(list);
     } else {
       home.append(el('p', 'sf-empty', 'Your music, a little closer. Open All playlists and choose Show on Home.'));
@@ -296,6 +406,9 @@
   }
 
   function onFilterClick(event) {
+    document.querySelectorAll('.sf-menu[open]').forEach(menu => {
+      if (!menu.contains(event.target)) menu.open = false;
+    });
     if (!applyingFilter && drawerOpen && library?.contains(event.target) && event.target.closest('[role="option"]')) {
       filterDefaultPending = false;
       const playlists = event.target.closest('[role="option"]').querySelector('[aria-label="Playlists"]');
@@ -345,13 +458,13 @@
       const mark = el('span', 'sf-mark');
       mark.setAttribute('aria-hidden', 'true');
       mark.append(el('i'), el('i'), el('i'));
-      a.append(mark, el('span', '', 'Spotify '), el('span', 'sf-brand-light', 'Focused'));
+      a.append(mark, el('span', '', 'Spotify '), el('span', 'sf-brand-light', 'Unslopified'));
       brand.append(a);
       globalNav.prepend(brand);
     }
     if (!sidebar?.isConnected) {
       sidebar = ui('nav', 'sf-sidebar');
-      sidebar.setAttribute('aria-label', 'Focused navigation');
+      sidebar.setAttribute('aria-label', 'Unslopified navigation');
       layout.append(sidebar);
       renderKey = '';
     }
@@ -366,7 +479,7 @@
       libraryClose = ui('div', 'sf-library-heading');
       const close = button('Close', 'sf-close', () => setDrawer(false));
       close.setAttribute('aria-label', 'Close all playlists');
-      libraryClose.append(el('h2', '', 'All playlists'), close);
+      libraryClose.append(el('h2', '', 'All playlists'), button('Imported', 'sf-nav-all', () => openImports()), close);
       library.prepend(libraryClose);
       libraryClose = close;
     }
@@ -378,6 +491,7 @@
       backdrop.addEventListener('click', () => setDrawer(false));
       layout.append(backdrop);
     }
+    if (importedPlayer && !localBar?.isConnected) renderLocalBar();
     return true;
   }
 
@@ -506,7 +620,7 @@
   }
 
   function reconcile() {
-    if (disposed || !ready || !state.enabled) return;
+    if (!extensionAlive() || !ready || !state.enabled) return;
     try {
       html.setAttribute('data-sf-clean', '');
       hideAppPromotions();
@@ -525,11 +639,14 @@
       finishLoading();
     } catch (error) {
       disable();
-      console.warn('Spotify Focused restored the normal layout:', error.message);
+      console.warn('Spotify Unslopified restored the normal layout:', error.message);
     }
   }
 
   function disable(keepCleanup = false) {
+    html.removeAttribute('data-sf-local-player');
+    localPlayerView?.dispose(); localPlayerView = null;
+    localBar?.remove(); localBar = null;
     if (!keepCleanup) {
       html.removeAttribute('data-sf-clean');
       finishLoading();
@@ -560,6 +677,8 @@
   }
 
   const observer = new MutationObserver(records => {
+    if (!extensionAlive()) return;
+    if (records.some(record => record.type === 'childList' || record.attributeName === 'aria-label')) detectSpotifyPlayback();
     if (records.some(record => {
       const target = record.target.nodeType === Node.ELEMENT_NODE ? record.target : record.target.parentElement;
       if (target?.closest(own)) return false;
@@ -601,13 +720,32 @@
     }
   }
 
+  function onPlaybackKey(event) {
+    if ((event.code !== 'Space' && event.key !== ' ') || !html.hasAttribute('data-sf-local-player')) return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing ||
+        event.target.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    if (!extensionAlive()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!event.repeat) localCommand(importedPlayer?.playing ? 'pause' : 'resume');
+  }
+
   function onStorage(changes, area) {
+    if (!extensionAlive()) return;
+    if (area === 'local' && changes.importedHome) { importedHome = changes.importedHome.newValue || []; render(); }
     if (area !== 'local' || !changes[C.STORAGE_KEY]) return;
     adopt(changes[C.STORAGE_KEY].newValue);
     if (state.enabled) reconcile(); else disable();
   }
 
+  let lastLibraryCheck = 0;
   const routeTimer = setInterval(() => {
+    if (!extensionAlive()) return;
+    detectSpotifyPlayback();
+    if (state.enabled && !document.hidden && Date.now() - lastLibraryCheck > 30000) {
+      lastLibraryCheck = Date.now();
+      send({type:'imported:refresh'}).catch(() => {});
+    }
     if (lastURL !== location.href) {
       lastURL = location.href;
       setDrawer(false, false);
@@ -618,35 +756,54 @@
   async function start() {
     try {
       const result = await chrome.storage.local.get(C.STORAGE_KEY);
+      if (!extensionAlive()) return;
       adopt(result[C.STORAGE_KEY]);
+      importedHome = (await chrome.storage.local.get('importedHome')).importedHome || [];
+      if (!extensionAlive()) return;
+      chrome.runtime.onMessage?.addListener(importedMessage);
+      document.addEventListener('playing', onSpotifyStart, true);
+      if (chrome.runtime.onMessage) send({type:'imported:status'}).then(result => {
+        if (!disposed) {
+          importedPlayer = result?.state;
+          spotifyHasControl = importedPlayer?.playbackOwner === 'spotify';
+          detectSpotifyPlayback();
+          renderLocalBar();
+        }
+      }).catch(() => {});
       ready = true;
       observer.observe(html, { childList: true, subtree: true, characterData: true, attributes: true,
         attributeFilter: ['aria-controls', 'aria-checked', 'aria-selected', 'aria-pressed', 'aria-label', 'data-testid', 'role', 'href', 'src', 'id'] });
       document.addEventListener('input', onInput, true);
       document.addEventListener('click', onFilterClick, true);
       document.addEventListener('keydown', onKey);
+      document.addEventListener('keydown', onPlaybackKey, true);
       chrome.storage.onChanged.addListener(onStorage);
       if (state.enabled) reconcile(); else disable();
-    } catch {
+    } catch (error) {
+      if (/Extension context invalidated/i.test(error.message) || !extensionAlive()) { dispose(); return; }
       disable();
-      announce('Spotify Focused could not load. Reload Spotify to reconnect the extension.');
+      announce('Spotify Unslopified could not load. Reload Spotify to reconnect the extension.');
     }
   }
 
-  globalThis.__spotifyFocused = {
-    refresh: reconcile,
-    dispose() {
-      disposed = true;
-      observer.disconnect();
-      clearInterval(routeTimer);
-      clearTimeout(scheduled);
-      clearTimeout(saveTimer);
-      document.removeEventListener('input', onInput, true);
-      document.removeEventListener('click', onFilterClick, true);
-      document.removeEventListener('keydown', onKey);
-      chrome.storage.onChanged.removeListener(onStorage);
-      disable();
-    }
-  };
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    clearInterval(routeTimer);
+    clearTimeout(scheduled);
+    clearTimeout(saveTimer);
+    clearTimeout(lyricsNoticeTimer);
+    localBar?.remove();
+    document.removeEventListener('playing', onSpotifyStart, true);
+    try { chrome.runtime.onMessage?.removeListener(importedMessage); } catch {}
+    observer.disconnect();
+    document.removeEventListener('input', onInput, true);
+    document.removeEventListener('click', onFilterClick, true);
+    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('keydown', onPlaybackKey, true);
+    try { chrome.storage.onChanged.removeListener(onStorage); } catch {}
+    disable();
+  }
+  globalThis.__spotifyFocused = { refresh: reconcile, dispose };
   start();
 })();

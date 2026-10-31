@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Imported playlists · Spotify Unslopified</title>
+    <link rel="stylesheet" href="library.css" />
+    <link rel="stylesheet" href="tooltips.css" />
+    <link rel="stylesheet" href="imported-player.css" />
+  </head>
+  <body>
+    <header class="library-topbar">
+      <button id="back" class="back-button" aria-label="Back to Spotify"></button>
+    </header>
+    <main>
+      <p id="notice" role="status" hidden></p>
+      <button id="reconnect" hidden>Reconnect folder</button>
+      <section id="setup" hidden>
+        <h1>Your music</h1>
+        <button id="setupConnect">Choose library</button>
+        <p class="library-hint">One folder for all imported playlists. Each subfolder is a playlist.</p>
+      </section>
+      <section id="connected" hidden>
+        <div class="layout">
+          <aside>
+            <div class="heading sidebar-heading">
+              <div class="library-brand"><img src="icons/icon-48.png" width="26" height="26" alt="" /><h2>Playlists</h2></div>
+              <button id="refresh" hidden>Refresh</button>
+              <button id="create" aria-label="Create playlist">＋</button>
+            </div>
+            <nav id="playlists"></nav>
+          </aside>
+          <section id="detail" hidden>
+            <div class="heading">
+              <div class="art big" id="playlistArt"></div>
+              <h2 id="title"></h2>
+            </div>
+            <div class="tools">
+              <button id="play">Play</button><button id="shuffle">Shuffle</button
+              ><button id="import">Import songs</button>
+              <details class="playlist-menu">
+                <summary>Options</summary>
+                <div class="menu">
+                  <button id="cover">Change cover</button><button id="home"></button
+                  ><button id="offline">Keep offline</button><button id="delete">Delete playlist</button>
+                </div>
+              </details>
+            </div>
+            <details id="dates">
+              <summary>Filter by date</summary>
+              <label>From <input id="from" type="date" /></label
+              ><label>Through <input id="through" type="date" /></label><button id="clearDates">Clear</button>
+            </details>
+            <ol id="songs"></ol>
+          </section>
+        </div>
+      </section>
+    </main>
+    <dialog id="folderDialog">
+      <div class="heading"><h2>Library</h2><button id="closeFolder" aria-label="Close"></button></div>
+      <p id="folderName"></p>
+      <p class="library-hint">All imported playlists live here, one per subfolder.</p>
+      <p class="dialogStatus" role="status" hidden></p>
+      <div class="folder-actions"><button id="connect">Change library</button><button id="disconnect" class="quiet">Disconnect</button></div>
+    </dialog>
+    <section id="lyricsPage" aria-label="Lyrics" hidden>
+      <div class="lyrics-header">
+        <strong id="lyricsPlaylist"></strong>
+        <div class="lyrics-actions"><button id="followLyrics" aria-label="Follow lyrics"></button><button id="closeLyrics" aria-label="Close lyrics"></button></div>
+      </div>
+      <div id="lyricsScroll" tabindex="0"><div id="lyricsText"></div></div>
+    </section>
+    <footer id="player" hidden></footer>
+    <aside id="queuePanel" aria-label="Queue" hidden>
+      <div class="queue-header">
+        <h2>Queue</h2>
+        <button id="closeQueue" aria-label="Close queue">×</button>
+      </div>
+      <div class="queue-scroll">
+        <section id="queueNowSection"><h3>Now playing</h3><ol id="queueNow"></ol></section>
+        <section><h3 id="queueNextLabel">Next up</h3><ol id="queueList"></ol><p id="queueEmpty">Your queue is empty.</p></section>
+      </div>
+    </aside>
+    <dialog id="createDialog">
+      <form id="createForm">
+        <div class="heading">
+          <h2>Create playlist</h2>
+          <button type="button" id="closeCreate" aria-label="Close">×</button>
+        </div>
+        <label>Name<input id="newName" required autofocus /></label>
+        <label>Cover<input id="newCover" type="file" accept="image/*" /></label>
+        <button type="button" id="newCoverPreview" class="art" aria-label="Adjust cover" hidden></button>
+        <small id="newLocation"></small>
+        <p class="dialogStatus" role="status"></p>
+        <button>Create</button>
+      </form>
+    </dialog>
+    <dialog id="editor">
+      <form id="editorForm">
+        <div class="heading">
+          <h2>Song details</h2>
+          <button type="button" id="closeEditor" aria-label="Close">×</button>
+        </div>
+        <label>Title<input id="songTitle" required /></label><label>Artist<input id="songArtist" /></label
+        ><label>Created<input id="songDate" type="date" /></label
+        ><label>Source link<input id="songSource" type="url" /></label>
+        <label>Lyrics or timed lyrics<textarea id="songLyrics" rows="5"></textarea></label
+        ><button id="retryLyrics" type="button" class="quiet" hidden>Retry lyrics</button>
+        <label>Track order<input id="songOrder" type="number" step="any" /></label
+        ><label>Artwork<input id="songArt" type="file" accept="image/*" /></label>
+        <p class="dialogStatus" role="status" hidden></p>
+      </form>
+    </dialog>
+    <dialog id="coverDialog">
+      <div class="heading"><h2>Cover</h2><button id="closeCover" aria-label="Close"></button></div>
+      <canvas id="coverCanvas" width="640" height="640" tabindex="0" aria-label="Cover crop. Drag or use arrow keys to position."></canvas>
+      <input id="coverZoom" type="range" min="1" max="6" step="0.01" value="1" aria-label="Zoom" />
+      <div class="cover-actions"><button id="chooseCover" class="quiet">Choose photo</button><button id="resetCover" class="quiet">Reset</button><button id="saveCover">Save</button></div>
+      <p id="coverStatus" class="dialogStatus" role="status" hidden></p>
+      <input id="coverFile" type="file" accept="image/*" hidden />
+    </dialog>
+    <div id="lyricsToast" class="lyrics-toast" role="status" hidden></div>
+    <input id="files" type="file" multiple accept="audio/*,.flac,.opus,.m4a,.json" hidden /><input
+      id="image"
+      type="file"
+      accept="image/*"
+      hidden
+    />
+    <script src="music-folder.js"></script>
+    <script src="imported-artwork.js"></script>
+    <script src="tooltips.js"></script>
+    <script src="control-icons.js"></script>
+    <script src="cover-editor.js"></script>
+    <script src="imported-player-view.js"></script>
+    <script src="lyrics-view.js"></script>
+    <script src="queue-view.js"></script>
+    <script src="library.js"></script>
+  </body>
+</html>

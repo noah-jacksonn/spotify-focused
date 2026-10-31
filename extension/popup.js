@@ -2,11 +2,19 @@
   'use strict';
   const C = globalThis.SpotifyFocusedCore;
   const toggle = document.getElementById('enabled');
-  const summary = document.getElementById('summary');
   const status = document.getElementById('status');
+  document.getElementById('libraryIcon').append(FocusedIcons.create('folder'));
+  document.getElementById('libraryChevron').append(FocusedIcons.create('chevron'));
+  MusicFolder.selection().then(root => {
+    document.getElementById('libraryName').textContent = root?.handle.name || 'Choose folder';
+  }).catch(() => { status.textContent = 'Could not load library settings.'; });
+  document.getElementById('musicFolder').onclick = () => {
+    chrome.runtime.sendMessage({ type: 'imported:open', settings: true }).then(result => {
+      if (!result?.ok) status.textContent = 'Could not open library settings.';
+    }).catch(() => { status.textContent = 'Could not open library settings.'; });
+  };
   function render(state) {
     toggle.checked = state.enabled;
-    summary.textContent = state.home.length ? `${state.home.length} playlist${state.home.length === 1 ? '' : 's'} on Home` : 'Choose your first playlist on Spotify.';
   }
   chrome.storage.local.get(C.STORAGE_KEY).then(result => {
     render(C.settings(result[C.STORAGE_KEY]));

@@ -1,0 +1,15 @@
+.sf-tooltip {
+  position: fixed;
+  z-index: 2147483647;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 6px 9px;
+  border: 1px solid #3c485b;
+  border-radius: 7px;
+  background: #253142;
+  color: #edf2fb;
+  box-shadow: 0 3px 12px #0005;
+  font: 12px/1.4 system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
+}

@@ -1,15 +1,25 @@
 {
-  "name": "spotify-focused",
+  "name": "spotify-unslopified",
   "version": "0.1.0",
   "private": true,
   "description": "A quieter Spotify web player, with a Home you choose.",
   "scripts": {
-    "check": "node --check extension/core.js && node --check extension/store.js && node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js && node scripts/check.mjs",
+    "check": "node --check extension/queue-view.js && node --check extension/imported-player-view.js && node --check extension/lyrics-view.js && node --check extension/imported-artwork.js && node --check extension/cover-editor.js && node --check extension/suno-lyrics.js && node --check extension/tooltips.js && node --check extension/control-icons.js && node --check extension/core.js && node --check extension/store.js && node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js && node --check extension/music-folder.js && node --check extension/library.js && node --check extension/local-player.js && node scripts/check.mjs",
     "test": "node --test tests/*.test.cjs",
     "icons": "node scripts/icons.mjs",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "control-icons": "node scripts/control-icons.mjs",
+    "preview:library": "node scripts/preview-library.mjs"
   },
   "devDependencies": {
-    "jsdom": "^26.1.0"
+    "@hugeicons/core-free-icons": "4.4.0",
+    "@noah/segtest": "file:vendor/segtest/segtest-c5aba5ac40fb59f9.tgz",
+    "@radix-ui/react-tabs": "1.2.1",
+    "esbuild": "0.28.2",
+    "jsdom": "^26.1.0",
+    "lucide-react": "0.577.0",
+    "next-themes": "0.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   }
 }
