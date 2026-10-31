@@ -2,7 +2,7 @@
 
 **Spotify without the slop. A quieter web player for Chrome.**
 
-![Home with chosen Spotify and imported Suno playlists](docs/screenshots/home.webp)
+![Home with chosen Spotify and imported Suno playlists, including the bottom player](docs/screenshots/home-player.webp)
 
 Your playlists up front. Search when you want it. No recommendations feed to scroll past.
 
