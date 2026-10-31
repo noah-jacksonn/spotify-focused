@@ -2,6 +2,8 @@
 
 A Chrome extension for the Spotify web player: a quiet Home with playlists you choose, a compact favorites sidebar, and Spotify's actual search, songs, artwork, and player.
 
+![Spotify Unslopified Home with a chosen Spotify playlist and an imported Suno playlist](docs/screenshots/home.webp)
+
 ## Install locally
 
 1. Open `chrome://extensions` in Chrome.
