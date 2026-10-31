@@ -535,3 +535,32 @@ test('Imported remains available without Spotify filters and moves when they app
   assert.ok(filters.querySelector('.sf-library-imports'));
   assert.equal(f.doc.querySelectorAll('.sf-library-imports').length,1);
 });
+
+test('Create aligns with the pills without moving the native button or breaking its handler', async t => {
+  let create, originalParent, row;
+  let clicks=0, top=160;
+  const f=await fixture(t,{beforeStart(window){
+    const doc=window.document;
+    const header=doc.createElement('header');
+    header.innerHTML='<div><button aria-label="Create">Create</button></div>';
+    doc.querySelector('.YourLibraryX').prepend(header);
+    create=header.querySelector('button');originalParent=create.parentElement;
+    create.getBoundingClientRect=()=>({width:74,height:32});
+    create.addEventListener('click',()=>clicks++);
+    row=doc.querySelector('[role="listbox"]').parentElement;
+    row.getBoundingClientRect=()=>({right:400,top});
+  }});
+  assert.equal(create.parentElement,originalParent);
+  assert.equal(create.style.getPropertyValue('--sf-create-x'),'326px');
+  assert.equal(create.style.getPropertyValue('--sf-create-y'),'160px');
+  assert.equal(row.style.getPropertyValue('--sf-create-space'),'82px');
+  create.click();assert.equal(clicks,1);
+  top=200;f.window.dispatchEvent(new f.window.Event('resize'));
+  await new Promise(resolve=>setTimeout(resolve,130));
+  assert.equal(create.style.getPropertyValue('--sf-create-y'),'200px');
+  await f.change({...f.saved,enabled:false});
+  assert.equal(create.parentElement,originalParent);
+  assert.equal(create.hasAttribute('data-sf-create'),false);
+  assert.equal(create.closest('header').hasAttribute('data-sf-create-header'),false);
+  assert.equal(create.style.getPropertyValue('--sf-create-y'),'');
+});

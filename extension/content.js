@@ -416,6 +416,21 @@
     }
   }
 
+  function positionLibraryCreate(filterRow) {
+    const create = library.querySelector('button[aria-label="Create"]');
+    const header = create?.closest('header');
+    if (!create || !header) return;
+    header.setAttribute('data-sf-create-header', '');
+    create.setAttribute('data-sf-create', '');
+    filterRow.setAttribute('data-sf-has-create', '');
+    const button = create.getBoundingClientRect();
+    filterRow.style.setProperty('--sf-create-space', (button.width + 8) + 'px');
+    const row = filterRow.getBoundingClientRect();
+    const inset = filterRow.classList.contains('sf-library-fallback') ? 20 : 0;
+    create.style.setProperty('--sf-create-x', (row.right - inset - button.width) + 'px');
+    create.style.setProperty('--sf-create-y', row.top + 'px');
+  }
+
   function mount() {
     const globalNav = document.querySelector('[data-testid="global-nav-bar"]');
     const libraryContent = document.querySelector('.YourLibraryX');
@@ -495,6 +510,7 @@
       });
     }
     if (importedFilter.parentElement !== filterRow) filterRow.append(importedFilter);
+    positionLibraryCreate(filterRow);
     if (!backdrop?.isConnected) {
       backdrop = ui('button', 'sf-backdrop');
       backdrop.type = 'button';
@@ -676,6 +692,14 @@
     drawerOpen = false;
     document.querySelectorAll(own).forEach(node => node.remove());
     document.querySelectorAll('[data-sf-filter-row]').forEach(node => node.removeAttribute('data-sf-filter-row'));
+    document.querySelectorAll('[data-sf-has-create]').forEach(node => {
+      node.removeAttribute('data-sf-has-create'); node.style.removeProperty('--sf-create-space');
+    });
+    document.querySelectorAll('[data-sf-create-header]').forEach(node => node.removeAttribute('data-sf-create-header'));
+    document.querySelectorAll('[data-sf-create]').forEach(node => {
+      node.removeAttribute('data-sf-create');
+      node.style.removeProperty('--sf-create-x'); node.style.removeProperty('--sf-create-y');
+    });
     document.querySelectorAll('[data-sf-playlist-row]').forEach(node => node.removeAttribute('data-sf-playlist-row'));
     renderKey = '';
   }
@@ -786,6 +810,7 @@
       document.addEventListener('click', onFilterClick, true);
       document.addEventListener('keydown', onKey);
       document.addEventListener('keydown', onPlaybackKey, true);
+      window.addEventListener('resize', schedule);
       chrome.storage.onChanged.addListener(onStorage);
       if (state.enabled) reconcile(); else disable();
     } catch (error) {
@@ -810,6 +835,7 @@
     document.removeEventListener('click', onFilterClick, true);
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('keydown', onPlaybackKey, true);
+    window.removeEventListener('resize', schedule);
     try { chrome.storage.onChanged.removeListener(onStorage); } catch {}
     disable();
   }
