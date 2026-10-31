@@ -8,10 +8,10 @@ const a = 'a'.repeat(22), b = 'b'.repeat(22);
 const row = (id, name) => `<div role="row"><div role="gridcell"><div role="button" aria-labelledby="listrow-title-spotify:playlist:${id}"></div><p id="listrow-title-spotify:playlist:${id}">${name}</p><p data-encore-id="listRowSubtitle">Playlist • Listener</p><img src="https://i.scdn.co/image/${id}"></div></div>`;
 const playlist = (name = 'End of 2026') => `<section data-testid="playlist-page"><div data-testid="entity-header"><span data-testid="entityTitle"><h1>${name}</h1></span><a data-testid="creator-link">Listener</a><div data-testid="playlist-image"><img src="https://i.scdn.co/image/${name.replaceAll(' ', '')}"></div></div><div data-testid="action-bar-row"><button id="native-play">Play</button></div><div data-testid="playlist-tracklist">Native songs</div></section>`;
 
-async function fixture(t, { saved, path = '/home', failSet = false, storageDelay = 0, shared, beforeStart } = {}) {
+async function fixture(t, { saved = {home:[{id:a,name:'End of 2026',owner:'Listener',image:'https://i.scdn.co/image/'+a}],didChooseHome:true}, path = '/home', failSet = false, storageDelay = 0, shared, beforeStart } = {}) {
   const dom = new JSDOM(`<!doctype html><html><body><div id="layout">
     <div data-testid="global-nav-bar" style="grid-area:global-nav"><div><input data-testid="search-input" type="search" aria-controls="search-suggestions"></div><div><button data-testid="user-widget-link">Account</button></div></div>
-    <div style="grid-area:left-sidebar"><nav aria-label="Main"><div class="YourLibraryX"><div role="option"><div data-encore-id="chip" aria-label="Playlists" aria-checked="false"></div></div><div role="grid">${row(a, 'End of 2026')}${row(b, 'Other playlist')}</div></div></nav></div>
+    <div style="grid-area:left-sidebar"><nav aria-label="Main"><div class="YourLibraryX"><div role="presentation"><div role="listbox" aria-label="Filter options"><div role="option"><div data-encore-id="chip" aria-label="Playlists" aria-checked="false"></div></div></div></div><div role="grid">${row(a, 'End of 2026')}${row(b, 'Other playlist')}</div></div></nav></div>
     <div style="grid-area:main-view"><div class="main-view-container"><main>${path.includes('/playlist/') ? playlist() : '<h1>Recommendations</h1>'}</main></div></div>
     <div style="grid-area:now-playing-bar"><aside data-testid="now-playing-bar"><button>Native playback</button></aside></div>
     <div style="grid-area:right-sidebar"><div data-testid="NPV_Panel_OpenDiv">Automatic suggestions</div></div>
@@ -54,7 +54,7 @@ async function fixture(t, { saved, path = '/home', failSet = false, storageDelay
   return { window, doc: window.document, writes, async flush() { await new Promise(resolve => setTimeout(resolve, 10)); }, get saved() { return data[C.STORAGE_KEY]; }, failWrites() { failSet = true; }, async change(state) { await window.chrome.storage.local.set({ [C.STORAGE_KEY]: { ...state, revision: (data[C.STORAGE_KEY]?.revision || 0) + 1 } }); } };
 }
 
-test('starts with End of 2026, preserves real playback nodes, and keeps other playlists behind a click', async t => {
+test('preserves saved Home playlists, real playback nodes, and the library drawer', async t => {
   const f = await fixture(t);
   assert.ok(f.doc.documentElement.hasAttribute('data-sf-enabled'));
   assert.deepEqual(f.saved.home.map(p => p.name), ['End of 2026']);
@@ -175,6 +175,7 @@ test('playlist names are rendered as text, never executable markup', async t => 
 
 test('storage errors are reported instead of silently losing Home choices', async t => {
   const f = await fixture(t, { failSet: true });
+  f.doc.querySelector(`[id="listrow-title-spotify:playlist:${b}"]`).closest('[role="row"]').querySelector('.sf-library-pin').click();
   await f.flush();
   assert.match(f.doc.querySelector('.sf-status').textContent, /could not be saved/);
 });
@@ -469,4 +470,68 @@ test('Spotify playback ownership reaches sibling tabs and survives cached queue 
   receive({type:'imported:owner',owner:'spotify'});
   receive({type:'imported:display',state:{...state,playbackOwner:'spotify'}});
   assert.equal(f.doc.querySelector('.sf-local-bar'),null);
+});
+
+test('Imported sits beside playlist filters, survives filter replacement and opens the library', async t => {
+  const f = await fixture(t);
+  const messages = [];
+  const originalSend = f.window.chrome.runtime.sendMessage;
+  f.window.chrome.runtime.sendMessage = async message => {
+    messages.push(message);
+    return message.type === 'imported:open' ? {ok:true} : originalSend(message);
+  };
+  f.doc.querySelector('.sf-all').click();
+  const playlists = f.doc.querySelector('[aria-label="Playlists"]');
+  const row = playlists.closest('[role="listbox"]').parentElement;
+  const imported = f.doc.querySelector('.sf-library-imports');
+  assert.equal(imported.parentElement, row);
+  assert.equal(f.doc.querySelector('.sf-library-heading .sf-library-imports'), null);
+  imported.click();
+  await f.flush();
+  assert.ok(messages.some(message => message.type === 'imported:open'));
+  assert.equal(playlists.getAttribute('aria-checked'), 'true');
+  row.innerHTML = '<div role="listbox" aria-label="Filter options"><div role="option"><div data-encore-id="chip" aria-label="Playlists" aria-checked="true"></div></div></div>';
+  f.window.__spotifyFocused.refresh();
+  assert.equal(row.querySelectorAll('.sf-library-imports').length, 1);
+  f.window.__spotifyFocused.refresh();
+  assert.equal(row.querySelectorAll('.sf-library-imports').length, 1);
+  await f.change({...f.saved, enabled:false});
+  assert.equal(f.doc.querySelector('.sf-library-imports'), null);
+  assert.equal(row.hasAttribute('data-sf-filter-row'), false);
+});
+
+test('new installs start empty even when the library contains the old default name', async t => {
+  const f = await fixture(t, {saved:null});
+  assert.equal(f.doc.querySelectorAll('.sf-home-row').length, 0);
+  assert.match(f.doc.querySelector('.sf-empty').textContent,/choose Show on Home/);
+  f.window.__spotifyFocused.refresh();
+  await f.flush();
+  assert.equal(f.doc.querySelectorAll('.sf-home-row').length, 0);
+  assert.equal(f.saved, undefined);
+  const pin=f.doc.querySelector(`[id="listrow-title-spotify:playlist:${a}"]`).closest('[role="row"]').querySelector('.sf-library-pin');
+  pin.click();await f.flush();
+  assert.deepEqual(f.saved.home.map(p=>p.id),[a]);
+});
+
+test('saved Spotify and imported order is respected without playlist-name exceptions', async t => {
+  const selected=[{id:a,name:'End of 2026',owner:'Listener',image:'https://i.scdn.co/image/'+a},{id:b,name:'Other playlist',owner:'Listener',image:'https://i.scdn.co/image/'+b}];
+  const f=await fixture(t,{saved:{home:selected,didChooseHome:true}});
+  await f.window.chrome.storage.local.set({importedHome:[{name:'Recordings',count:1},{name:'Suno',count:2}]});
+  const rows=[...f.doc.querySelectorAll('.sf-home-row')];
+  assert.deepEqual(rows.map(row=>row.querySelector('strong').textContent),['End of 2026','Other playlist','Recordings','Suno']);
+  assert.deepEqual(f.saved.home.map(p=>p.id),[a,b]);
+});
+
+test('Imported remains available without Spotify filters and moves when they appear', async t => {
+  const f=await fixture(t,{saved:null,beforeStart(window){window.document.querySelector('[role="listbox"]').remove();}});
+  const fallback=f.doc.querySelector('.sf-library-fallback');
+  assert.ok(fallback.querySelector('.sf-library-imports'));
+  assert.equal(f.doc.querySelector('.sf-library-heading .sf-library-imports'),null);
+  const filters=f.doc.createElement('div');
+  filters.innerHTML='<div role="listbox"><div role="option"><div data-encore-id="chip" aria-label="Playlists"></div></div></div>';
+  f.doc.querySelector('.YourLibraryX').prepend(filters);
+  f.window.__spotifyFocused.refresh();
+  assert.equal(f.doc.querySelector('.sf-library-fallback'),null);
+  assert.ok(filters.querySelector('.sf-library-imports'));
+  assert.equal(f.doc.querySelectorAll('.sf-library-imports').length,1);
 });

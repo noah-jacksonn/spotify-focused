@@ -115,7 +115,6 @@
   const pending = [];
   const pendingMetadata = new Map();
   const observedMetadata = new Map();
-  let didSeedAttempt = false;
   let metadataWritesFailed = false;
   let ready = false;
   let disposed = false;
@@ -133,6 +132,7 @@
   let home = null;
   let brand = null;
   let libraryClose = null;
+  let importedFilter = null;
   let pinControl = null;
   let backdrop = null;
   let status = null;
@@ -326,15 +326,7 @@
     home.append(el('h1', '', 'Home'));
     if (state.home.length || importedHome.length) {
       const list = el('ul', 'sf-home-list');
-      const suno = importedHome.find(p => p.name === 'Suno');
-      let placedSuno = false;
-      for (const playlist of state.home) {
-        list.append(homeRow(playlist));
-        if (suno && !placedSuno && playlist.name.toLowerCase() === 'end of 2026') {
-          list.append(importedHomeRow(suno)); placedSuno = true;
-        }
-      }
-      for (const item of importedHome) if (item !== suno || !placedSuno) list.append(importedHomeRow(item));
+      list.append(...state.home.map(homeRow), ...importedHome.map(importedHomeRow));
       home.append(list);
     } else {
       home.append(el('p', 'sf-empty', 'Your music, a little closer. Open All playlists and choose Show on Home.'));
@@ -479,10 +471,30 @@
       libraryClose = ui('div', 'sf-library-heading');
       const close = button('Close', 'sf-close', () => setDrawer(false));
       close.setAttribute('aria-label', 'Close all playlists');
-      libraryClose.append(el('h2', '', 'All playlists'), button('Imported', 'sf-nav-all', () => openImports()), close);
+      libraryClose.append(el('h2', '', 'All playlists'), close);
       library.prepend(libraryClose);
       libraryClose = close;
     }
+    let filterRow = library.querySelector('[data-encore-id="chip"][aria-label="Playlists"]')?.closest('[role="listbox"]')?.parentElement;
+    const fallbackRow = library.querySelector('.sf-library-fallback');
+    if (filterRow) fallbackRow?.remove();
+    else {
+      filterRow = fallbackRow || ui('div', 'sf-library-fallback');
+      if (!filterRow.isConnected) library.querySelector('.sf-library-heading').after(filterRow);
+    }
+    filterRow.setAttribute('data-sf-filter-row', '');
+    if (!importedFilter?.isConnected) {
+      importedFilter = ui('button', 'sf-library-imports');
+      importedFilter.type = 'button';
+      importedFilter.textContent = 'Imported';
+      importedFilter.setAttribute('aria-label', 'Open imported playlists');
+      importedFilter.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        openImports();
+      });
+    }
+    if (importedFilter.parentElement !== filterRow) filterRow.append(importedFilter);
     if (!backdrop?.isConnected) {
       backdrop = ui('button', 'sf-backdrop');
       backdrop.type = 'button';
@@ -504,10 +516,6 @@
       if (!playlist) { pin?.remove(); row.removeAttribute('data-sf-playlist-row'); continue; }
       // The open page has the authoritative title and higher-resolution artwork.
       if (playlist.id !== C.playlistId(location.pathname)) updateMetadata(playlist);
-      if (!state.didChooseHome && !didSeedAttempt && /^end of 2026$/i.test(playlist.name)) {
-        didSeedAttempt = true;
-        persist({ kind: 'seed', playlist, selected: true });
-      }
       row.setAttribute('data-sf-playlist-row', '');
       if (!pin) {
         pin = ui('button', 'sf-library-pin');
@@ -667,6 +675,7 @@
     if (mainShell) mainShell.inert = false;
     drawerOpen = false;
     document.querySelectorAll(own).forEach(node => node.remove());
+    document.querySelectorAll('[data-sf-filter-row]').forEach(node => node.removeAttribute('data-sf-filter-row'));
     document.querySelectorAll('[data-sf-playlist-row]').forEach(node => node.removeAttribute('data-sf-playlist-row'));
     renderKey = '';
   }

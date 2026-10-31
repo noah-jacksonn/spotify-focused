@@ -46,9 +46,9 @@
   function applyOperation(value, operation) {
     const next = settings(value);
     if (operation?.kind === 'enabled' && typeof operation.enabled === 'boolean') next.enabled = operation.enabled;
-    if (operation?.kind === 'home' || operation?.kind === 'seed') {
+    if (operation?.kind === 'home') {
       const playlist = cleanPlaylist(operation.playlist);
-      if (!playlist || (operation.kind === 'seed' && next.didChooseHome)) return next;
+      if (!playlist) return next;
       const index = next.home.findIndex(p => p.id === playlist.id);
       if (operation.selected === false) next.home = next.home.filter(p => p.id !== playlist.id);
       else if (index >= 0) next.home[index] = playlist;

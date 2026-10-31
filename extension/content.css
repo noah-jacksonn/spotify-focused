@@ -232,6 +232,12 @@ html[data-sf-enabled] [data-sf-library] > nav { flex: 1; min-height: 0; width: 1
 html[data-sf-enabled] [data-sf-library] .YourLibraryX { background: var(--sf-surface) !important; border-radius: 0 !important; }
 html[data-sf-enabled] .sf-library-heading { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px 12px; flex-shrink: 0; }
 html[data-sf-enabled] .sf-library-heading h2 { margin: 0; font-size: 18px; font-weight: 600; }
+html[data-sf-enabled] [data-sf-filter-row] { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+html[data-sf-enabled] [data-sf-filter-row] > [role="listbox"] { min-width: 0; }
+html[data-sf-enabled] .sf-library-fallback { padding: 0 20px 12px; }
+html[data-sf-enabled] .sf-library-imports { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-height: 32px; padding: 6px 12px; border: 0; border-radius: 999px; background: var(--sf-hover); color: var(--sf-text); font: 500 14px/20px system-ui, sans-serif; white-space: nowrap; cursor: pointer; }
+html[data-sf-enabled] .sf-library-imports:hover { background: var(--sf-line); }
+html[data-sf-enabled] .sf-library-imports:focus-visible { outline: 2px solid var(--sf-accent); outline-offset: 2px; }
 html[data-sf-enabled] .sf-close { border: none; padding: 8px 10px; border-radius: 5px; color: var(--sf-muted); background: none; }
 html[data-sf-enabled] .sf-close:hover { background: var(--sf-hover); color: var(--sf-text); }
 html[data-sf-enabled] [data-sf-library] button[aria-label="Collapse Your Library"],

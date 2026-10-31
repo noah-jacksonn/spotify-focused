@@ -31,3 +31,8 @@ test('only empty search and Home routes replace native content', () => {
   assert.equal(C.route('/show/example'), 'content');
   assert.equal(C.route(`/playlist/${id}`), 'playlist');
 });
+
+test('old automatic seed messages cannot choose a playlist for a new user', () => {
+  const empty = C.settings();
+  assert.deepEqual(C.applyOperation(empty, {kind:'seed',playlist:{id,name:'End of 2026'},selected:true}), empty);
+});
