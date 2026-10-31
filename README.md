@@ -8,7 +8,7 @@ Your playlists up front. Search when you want it. No recommendations feed to scr
 
 - Choose exactly which playlists appear on Home.
 - Keep Spotify’s songs, search and playback controls.
-- Import your own music, with covers, a queue and timed lyrics.
+- Additionally, create your own playlists from downloaded music files, with cover art, a queue and timed lyrics.
 - Share imported playlists with the [iPhone app](https://github.com/noah-jacksonn/spotify-unslopified-ios) through iCloud.
 
 ## Get it running
